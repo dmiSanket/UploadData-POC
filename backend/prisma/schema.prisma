@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DataType {
+  String
+  Number
+  Date
+  Boolean
+}
+
+/// Core document types, e.g. "PO Order", "OOQ", "SOQ", "MRN", "STN".
+model Category {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  createdAt   DateTime     @default(now())
+  fileSchemas FileSchema[]
+}
+
+/// Specific dealer entities, e.g. "Apex Motors", "Metro Auto Group".
+model Dealer {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  scopes    Scope[]
+}
+
+/// Specific location entities, e.g. "Mumbai - West", "Delhi NCR".
+model Location {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  scopes    Scope[]
+}
+
+/// Specific brand entities, e.g. "Toyota", "Hyundai", "Tata Motors".
+model Brand {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  scopes    Scope[]
+}
+
+/// A contextual target combining one or more specific Dealers, Locations, and/or Brands.
+model Scope {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  createdAt   DateTime     @default(now())
+  dealers     Dealer[]
+  locations   Location[]
+  brands      Brand[]
+  fileSchemas FileSchema[]
+}
+
+/// A Category + Scope combination (e.g. "PO Order" for a specific Scope of dealers/locations/brands).
+model FileSchema {
+  id           Int                @id @default(autoincrement())
+  categoryId   Int
+  scopeId      Int
+  createdAt    DateTime           @default(now())
+  /// Saved mapping template for future uploads on this Category + Scope:
+  /// { mapping, defaultValues, computedColumns, updatedAt }
+  savedMapping Json?
+  category     Category           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  scope        Scope              @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  columns      ColumnDefinition[]
+  batches      IngestedBatch[]
+
+  @@unique([categoryId, scopeId])
+}
+
+/// Dynamic column rule for a FileSchema. No DDL is ever run at runtime;
+/// columns are rows in this table.
+model ColumnDefinition {
+  id              Int        @id @default(autoincrement())
+  fileSchemaId    Int
+  columnName      String
+  dataType        DataType
+  isRequired      Boolean    @default(false)
+  /// { regex?: string, min?: number, max?: number, minLength?: number, maxLength?: number }
+  validationRules Json?
+  position        Int        @default(0)
+  fileSchema      FileSchema @relation(fields: [fileSchemaId], references: [id], onDelete: Cascade)
+
+  @@unique([fileSchemaId, columnName])
+}
+
+/// One upload event.
+model IngestedBatch {
+  id           Int            @id @default(autoincrement())
+  fileSchemaId Int
+  uploadDate   DateTime       @default(now())
+  uploadedBy   String
+  fileName     String?
+  rowCount     Int            @default(0)
+  fileSchema   FileSchema     @relation(fields: [fileSchemaId], references: [id], onDelete: Cascade)
+  rows         IngestedData[]
+}
+
+/// One validated row; mapped key/value pairs live in a JSONB column.
+model IngestedData {
+  id        Int           @id @default(autoincrement())
+  batchId   Int
+  rowNumber Int
+  rowData   Json
+  batch     IngestedBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+}

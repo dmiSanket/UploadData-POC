@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres:16
+    container_name: ingestion_poc_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ingestion
+      POSTGRES_PASSWORD: ingestion
+      POSTGRES_DB: ingestion_poc
+    ports:
+      - "5433:5432"
+    volumes:
+      - ingestion_poc_data:/var/lib/postgresql/data
+
+volumes:
+  ingestion_poc_data:
+
