@@ -24,6 +24,7 @@ export interface SavedMappingInput {
 
 export interface IngestInput {
   fileSchemaId: number;
+  batchId?: number;
   mapping: MappingDictionary;
   rows: RawRow[];
   rowNumbers?: number[];
@@ -66,6 +67,9 @@ export async function ingestRows(input: IngestInput): Promise<IngestResult> {
     input.rowNumbers,
   );
   if (totalErrors > 0) {
+    if (input.batchId) {
+      await prisma.ingestedBatch.delete({ where: { id: input.batchId } }).catch(() => {});
+    }
     return {
       success: false,
       totalRows: input.rows.length,
@@ -102,24 +106,36 @@ export async function ingestRows(input: IngestInput): Promise<IngestResult> {
         });
       }
 
-      const batch = await tx.ingestedBatch.create({
-        data: {
-          fileSchemaId: schema.id,
-          uploadedBy: input.uploadedBy,
-          fileName: input.fileName,
-          rowCount: validRows.length,
-        },
-      });
+      let targetBatchId = input.batchId;
+      if (targetBatchId) {
+        const existing = await tx.ingestedBatch.findUnique({ where: { id: targetBatchId } });
+        if (!existing) throw new HttpError(404, "Batch not found");
+        await tx.ingestedBatch.update({
+          where: { id: targetBatchId },
+          data: { rowCount: { increment: validRows.length } },
+        });
+      } else {
+        const batch = await tx.ingestedBatch.create({
+          data: {
+            fileSchemaId: schema.id,
+            uploadedBy: input.uploadedBy,
+            fileName: input.fileName,
+            rowCount: validRows.length,
+          },
+        });
+        targetBatchId = batch.id;
+      }
+
       for (let start = 0; start < validRows.length; start += INSERT_CHUNK_SIZE) {
         await tx.ingestedData.createMany({
           data: validRows.slice(start, start + INSERT_CHUNK_SIZE).map((row) => ({
-            batchId: batch.id,
+            batchId: targetBatchId,
             rowNumber: row.rowNumber,
             rowData: row.data as Prisma.InputJsonObject,
           })),
         });
       }
-      return batch.id;
+      return targetBatchId;
     },
     { timeout: 60_000 },
   );

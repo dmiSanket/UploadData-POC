@@ -95,6 +95,8 @@ export const savedMappingBodySchema = z.object({
 
 export const ingestBodySchema = z.object({
   fileSchemaId: z.number().int().positive(),
+  /** Optional batchId to append chunked rows to an already-created batch without exceeding serverless payload limits. */
+  batchId: z.number().int().positive().optional(),
   mapping: z.record(z.string(), z.string()),
   rows: z.array(z.record(z.string(), z.unknown())).min(1, "No data rows supplied"),
   /** Original spreadsheet row number per entry in `rows` (defaults to index + 2). */

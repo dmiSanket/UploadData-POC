@@ -76,7 +76,8 @@ export function prepareIngestionPayload(
   for (let i = 0; i < parsed.rows.length; i++) {
     const rawRow = parsed.rows[i];
     const rowNumber = parsed.rowNumbers[i] ?? i + 2;
-    const nextRow: RawRow = { ...rawRow };
+    // Only keep mapped & default columns to avoid sending huge unmapped spreadsheet columns to Vercel
+    const nextRow: RawRow = {};
     const cells: Record<string, PreviewCell> = {};
 
     for (const { columnName, sourceHeader, defaultValue, syntheticHeader } of resolvers) {
@@ -87,15 +88,16 @@ export function prepareIngestionPayload(
 
       const rawVal = sourceHeader ? rawRow[sourceHeader] : undefined;
       const blank = isBlankCell(rawVal);
+      const targetHeader = syntheticHeader || sourceHeader;
 
       if (!blank) {
-        if (syntheticHeader) nextRow[syntheticHeader] = rawVal;
+        nextRow[targetHeader] = rawVal;
         cells[columnName] = {
           value: rawVal,
           source: calcSet.has(sourceHeader) ? "calculated" : "file",
         };
       } else if (defaultValue !== "") {
-        nextRow[syntheticHeader] = defaultValue;
+        nextRow[targetHeader] = defaultValue;
         cells[columnName] = {
           value: defaultValue,
           source: "default",
